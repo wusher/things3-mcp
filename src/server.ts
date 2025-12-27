@@ -95,7 +95,17 @@ export class Things3Server {
 
       // All tools are now handled by the registry!
       const result = await this.registry.executeTool(name, args);
-      return { toolResult: result };
+
+      // MCP SDK expects content array with typed content objects
+      // Serialize the result to JSON string in a text content object
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: JSON.stringify(result),
+          },
+        ],
+      };
     });
 
     this.logger.info(`Registered ${this.registry.getToolCount()} tools via registry`);
