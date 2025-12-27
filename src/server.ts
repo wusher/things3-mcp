@@ -93,19 +93,41 @@ export class Things3Server {
     this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const { name, arguments: args } = request.params;
 
-      // All tools are now handled by the registry!
-      const result = await this.registry.executeTool(name, args);
+      // Check if tool exists first - unknown tools should be protocol-level errors
+      const handler = this.registry.getHandler(name);
+      if (!handler) {
+        throw new Error(`Unknown tool: ${name}`);
+      }
 
-      // MCP SDK expects content array with typed content objects
-      // Serialize the result to JSON string in a text content object
-      return {
-        content: [
-          {
-            type: 'text' as const,
-            text: JSON.stringify(result),
-          },
-        ],
-      };
+      try {
+        const result = await this.registry.executeTool(name, args);
+
+        // MCP SDK expects content array with typed content objects
+        // Serialize the result to JSON string in a text content object
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: JSON.stringify(result),
+            },
+          ],
+        };
+      } catch (error) {
+        // Per MCP spec: tool execution errors should be reported in the result
+        // with isError: true, allowing the LLM to see and self-correct
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        this.logger.error(`Tool ${name} execution failed: ${errorMessage}`);
+
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: JSON.stringify({ error: errorMessage }),
+            },
+          ],
+          isError: true,
+        };
+      }
     });
 
     this.logger.info(`Registered ${this.registry.getToolCount()} tools via registry`);
